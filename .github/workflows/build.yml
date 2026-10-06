@@ -1,0 +1,62 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to publish releases on tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate catalog JSON
+        shell: pwsh
+        run: |
+          $c = Get-Content src/apps.default.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $ids = $c.apps.id
+          if (-not $ids) { throw "catalog is empty" }
+          $dup = $ids | Group-Object | Where-Object Count -gt 1
+          if ($dup) { throw "duplicate ids: $($dup.Name -join ', ')" }
+          "catalog ok: $($ids.Count) packages"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          # v1.2.0 tag -> assembly version 1.2.0; untagged builds keep the csproj version
+          $v = if ("${{ github.ref }}" -like "refs/tags/v*") { "${{ github.ref_name }}".TrimStart("v") } else { "" }
+          cmd /c "build.cmd $v"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist/Phosphor.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  Phosphor.exe" | Out-File dist/Phosphor.exe.sha256 -Encoding ascii -NoNewline
+          "SHA256: $h"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Phosphor
+          path: |
+            dist/Phosphor.exe
+            dist/Phosphor.exe.sha256
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Phosphor.exe
+            dist/Phosphor.exe.sha256
+          generate_release_notes: true

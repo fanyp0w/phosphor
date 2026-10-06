@@ -1,0 +1,15 @@
+* text=auto
+
+# Windows scripts must keep CRLF or cmd.exe misparses them
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+*.cs        text diff=csharp
+*.xaml      text
+*.csproj    text
+*.manifest  text
+*.json      text
+*.md        text
+
+*.ico binary
+*.png binary
